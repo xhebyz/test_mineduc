@@ -1,8 +1,10 @@
 import pandas as pd
+import numpy as np
 
 # Nombres de columnas que se quieren conservar en el DataFrame limpio
 CLEAN_COLUMNS = ['AGNO', 'COD_REG_RBD', 'NOM_RBD', 'NOM_REG_RBD_A', 'RBD', 'MRUN', 'EDAD_ALU', 'COD_DEPE', 'COD_DEPE2',
                  'SIT_FIN', 'SIT_FIN2']
+
 
 def clean_dataframe(df, years):
     """
@@ -16,18 +18,25 @@ def clean_dataframe(df, years):
     columns_to_keep = [col for col in CLEAN_COLUMNS if col in df_filtered.columns]
     return df_filtered[columns_to_keep]
 
+
+def replace_columns(df, name_replace, name_value):
+    df[name_replace] = np.where((df[name_replace] == 0) | (df[name_replace].isna()) | (df[name_replace] == ''),
+                                df[name_value], df[name_replace])
+
+    return df
+
 def calculate_disengagement_stats(df):
     """
     Calcula estadísticas de desvinculación para establecimientos y regiones.
     """
     # Condición de desvinculación
     disengagement_condition = (
-        (df['RBD_x'] != df['RBD_y']) |
-        (df['RBD_x'].isna() & df['RBD_y'].notna()) |
-        (df['RBD_x'].notna() & df['RBD_y'].isna()) |
-        (df['COD_REG_RBD_x'] != df['COD_REG_RBD_y']) |
-        (df['COD_REG_RBD_x'].isna() & df['COD_REG_RBD_y'].notna()) |
-        (df['COD_REG_RBD_x'].notna() & df['COD_REG_RBD_y'].isna())
+            (df['RBD_x'] != df['RBD_y']) |
+            (df['RBD_x'].isna() & df['RBD_y'].notna()) |
+            (df['RBD_x'].notna() & df['RBD_y'].isna()) |
+            (df['COD_REG_RBD_x'] != df['COD_REG_RBD_y']) |
+            (df['COD_REG_RBD_x'].isna() & df['COD_REG_RBD_y'].notna()) |
+            (df['COD_REG_RBD_x'].notna() & df['COD_REG_RBD_y'].isna())
     )
 
     # Filtrar desvinculados
@@ -49,18 +58,19 @@ def calculate_disengagement_stats(df):
     df_enrollment_rbd = df_enrollment_rbd.rename(columns={"RBD_y": "RBD"})
     df_enrollment_reg = df_enrollment_reg.rename(columns={"COD_REG_RBD_y": "COD_REG_RBD"})
 
-
     # Fusionar y calcular tasas
     df_final_rbd = merge_and_calculate_rates(df_disengaged_rbd, df_enrollment_rbd, 'RBD')
     df_final_reg = merge_and_calculate_rates(df_disengaged_reg, df_enrollment_reg, 'COD_REG_RBD')
 
     return df_final_rbd, df_final_reg
 
+
 def group_and_count(df, group_columns, count_column_name):
     """
     Agrupa por las columnas dadas y cuenta las ocurrencias.
     """
     return df.groupby(group_columns).size().reset_index(name=count_column_name)
+
 
 def merge_and_calculate_rates(df1, df2, on_column):
     """
@@ -71,20 +81,25 @@ def merge_and_calculate_rates(df1, df2, on_column):
     df_merged = get_tasa(df_merged)
     return df_merged
 
+
 def get_tasa(df):
     df['matricula_teorica'] = df['count_matricula'] + df['count_disengaged']
     df['tasa_disengaged'] = df['count_disengaged'] / df['matricula_teorica']
     return df
 
+
 def get_totales(df):
     df.fillna(0, inplace=True)
-    totales = reg_stats[["count_matricula", "count_disengaged"]].sum()
+    totales = df[["count_matricula", "count_disengaged"]].sum()
     return get_tasa(totales)
 
-if __name__ == '__main__':
+
+def read_data_statics():
     # Cargar datos
-    data_performance = pd.read_csv("data/Rendimiento-2022/20230209_Rendimiento_2022_20230131_WEB_PS.csv", sep=";")
-    data_enrollment = pd.read_csv("data/Matricula-por-estudiante-2023/20230906_Matrícula_unica_2023_20230430_WEB.CSV", sep=";")
+    data_performance = pd.read_csv("data/Rendimiento-2022/20230209_Rendimiento_2022_20230131_WEB_PS.csv", sep=";",
+                                   low_memory=False)
+    data_enrollment = pd.read_csv("data/Matricula-por-estudiante-2023/20230906_Matrícula_unica_2023_20230430_WEB.CSV",
+                                  sep=";", low_memory=False)
 
     # Limpiar datos
     clean_data_enrollment = clean_dataframe(data_enrollment, [2023])
@@ -93,14 +108,28 @@ if __name__ == '__main__':
     # Fusionar y calcular estadísticas
     merged_data = pd.merge(clean_data_performance, clean_data_enrollment, on='MRUN', how='outer')
     rbd_stats, reg_stats = calculate_disengagement_stats(merged_data)
+    rbd_stats = replace_columns(rbd_stats, "NOM_RBD_x", "NOM_RBD_y")
+    rbd_stats = replace_columns(rbd_stats, "NOM_REG_RBD_A_x", "NOM_REG_RBD_A_y")
+    rbd_stats = replace_columns(rbd_stats, "COD_REG_RBD_x", "COD_REG_RBD_y")
 
-    print(rbd_stats)
-    print(reg_stats)
+    rbd_stats = rbd_stats[["RBD", "NOM_RBD_x", "COD_REG_RBD_x", "NOM_REG_RBD_A_x",
+                           "count_disengaged", "count_matricula", "matricula_teorica", "tasa_disengaged"]]
 
     totales_rbd = get_totales(rbd_stats)
     totales_reg = get_totales(reg_stats)
 
-    print(totales_rbd)
-    print(totales_reg)
+
+    return {
+        "RBD": {
+            "stats": rbd_stats,
+            "totales": totales_rbd
+        },
+        "REG": {
+            "stats": reg_stats,
+            "totales": totales_reg
+        }
+    }
 
 
+if __name__ == '__main__':
+    read_data_statics()
