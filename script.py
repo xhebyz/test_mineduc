@@ -3,7 +3,17 @@ import numpy as np
 
 # Nombres de columnas que se quieren conservar en el DataFrame limpio
 CLEAN_COLUMNS = ['AGNO', 'COD_REG_RBD', 'NOM_RBD', 'NOM_REG_RBD_A', 'RBD', 'MRUN', 'EDAD_ALU', 'COD_DEPE', 'COD_DEPE2',
-                 'SIT_FIN', 'SIT_FIN2']
+                 'SIT_FIN', 'SIT_FIN_R', 'COD_ENSE', 'COD_GRADO']
+
+CODE_4TO_MEDIO = [
+    # Códigos directos de 4to medio
+    (310, 4), (360, 4), (410, 4), (510, 4), (610, 4),
+    (710, 4), (810, 4), (910, 4),
+    # Códigos de ciclos que incluyen 4to medio
+    (361, 3), (363, 3), (460, 3), (461, 3), (560, 3),
+    (561, 3), (660, 3), (661, 3), (760, 3), (761, 3),
+    (860, 3), (861, 3), (863, 3), (963, 3)
+]
 
 
 def clean_dataframe(df, years):
@@ -30,17 +40,32 @@ def calculate_disengagement_stats(df):
     Calcula estadísticas de desvinculación para establecimientos y regiones.
     """
     # Condición de desvinculación
+    #disengagement_condition = (
+    #        (df['RBD_x'] != df['RBD_y']) |
+    #        (df['RBD_x'].isna() & df['RBD_y'].notna()) |
+    #        (df['RBD_x'].notna() & df['RBD_y'].isna()) |
+    #        (df['COD_REG_RBD_x'] != df['COD_REG_RBD_y']) |
+    #        (df['COD_REG_RBD_x'].isna() & df['COD_REG_RBD_y'].notna()) |
+    #        (df['COD_REG_RBD_x'].notna() & df['COD_REG_RBD_y'].isna())
+    #)
+
+    df_no_promovidos = df[
+        ~(
+                (df.set_index(['COD_ENSE_x', 'COD_GRADO_x']).index.isin(CODE_4TO_MEDIO)) &
+                ((df['SIT_FIN'] == 'P') |
+                (df['SIT_FIN_R'] == 'P'))
+        )
+    ]
+
     disengagement_condition = (
-            (df['RBD_x'] != df['RBD_y']) |
-            (df['RBD_x'].isna() & df['RBD_y'].notna()) |
-            (df['RBD_x'].notna() & df['RBD_y'].isna()) |
-            (df['COD_REG_RBD_x'] != df['COD_REG_RBD_y']) |
-            (df['COD_REG_RBD_x'].isna() & df['COD_REG_RBD_y'].notna()) |
-            (df['COD_REG_RBD_x'].notna() & df['COD_REG_RBD_y'].isna())
+        (df_no_promovidos['RBD_x'].notna() & df_no_promovidos['RBD_y'].isna()) |
+        (df_no_promovidos['COD_REG_RBD_x'].notna() & df_no_promovidos['COD_REG_RBD_y'].isna())
     )
 
+
+
     # Filtrar desvinculados
-    df_disengaged = df[disengagement_condition]
+    df_disengaged = df_no_promovidos[disengagement_condition]
 
     # Agrupar y contar para establecimientos y regiones
     df_disengaged_rbd = group_and_count(df_disengaged, ['RBD_x', 'NOM_RBD_x', 'COD_REG_RBD_x', 'NOM_REG_RBD_A_x'],
