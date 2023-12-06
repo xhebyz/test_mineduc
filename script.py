@@ -44,15 +44,6 @@ def calculate_disengagement_stats(df):
     """
     Calcula estadísticas de desvinculación para establecimientos y regiones.
     """
-    # Condición de desvinculación
-    # disengagement_condition = (
-    #        (df['RBD_x'] != df['RBD_y']) |
-    #        (df['RBD_x'].isna() & df['RBD_y'].notna()) |
-    #        (df['RBD_x'].notna() & df['RBD_y'].isna()) |
-    #        (df['COD_REG_RBD_x'] != df['COD_REG_RBD_y']) |
-    #        (df['COD_REG_RBD_x'].isna() & df['COD_REG_RBD_y'].notna()) |
-    #        (df['COD_REG_RBD_x'].notna() & df['COD_REG_RBD_y'].isna())
-    # )
 
     df_no_promovidos = df[
         ~(
@@ -160,7 +151,6 @@ def read_data_statics():
             "totales": totales_reg
         }
     }
-
 
 if __name__ == '__main__':
     read_data_statics()
