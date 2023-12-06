@@ -16,13 +16,17 @@ CODE_4TO_MEDIO = [
 ]
 
 
-def clean_dataframe(df, years):
+def clean_dataframe(df, years, is_subvencionado):
     """
     Limpia el DataFrame manteniendo solo las filas y columnas deseadas.
     """
     # Filtrar por años y códigos de dependencia
-    df_filtered = df[(df['AGNO'].isin(years))
-                     & (df['COD_DEPE2'] == 2) & (df['COD_DEPE'] == 3)]
+    if is_subvencionado:
+        filtro = (df['AGNO'].isin(years)) & ((df['COD_DEPE2'] == 2) | (df['COD_DEPE'] == 3))
+    else:
+        filtro = (df['AGNO'].isin(years))
+
+    df_filtered = df[filtro]
 
     # Seleccionar solo las columnas que existen en el DataFrame
     columns_to_keep = [col for col in CLEAN_COLUMNS if col in df_filtered.columns]
@@ -35,34 +39,33 @@ def replace_columns(df, name_replace, name_value):
 
     return df
 
+
 def calculate_disengagement_stats(df):
     """
     Calcula estadísticas de desvinculación para establecimientos y regiones.
     """
     # Condición de desvinculación
-    #disengagement_condition = (
+    # disengagement_condition = (
     #        (df['RBD_x'] != df['RBD_y']) |
     #        (df['RBD_x'].isna() & df['RBD_y'].notna()) |
     #        (df['RBD_x'].notna() & df['RBD_y'].isna()) |
     #        (df['COD_REG_RBD_x'] != df['COD_REG_RBD_y']) |
     #        (df['COD_REG_RBD_x'].isna() & df['COD_REG_RBD_y'].notna()) |
     #        (df['COD_REG_RBD_x'].notna() & df['COD_REG_RBD_y'].isna())
-    #)
+    # )
 
     df_no_promovidos = df[
         ~(
                 (df.set_index(['COD_ENSE_x', 'COD_GRADO_x']).index.isin(CODE_4TO_MEDIO)) &
                 ((df['SIT_FIN'] == 'P') |
-                (df['SIT_FIN_R'] == 'P'))
+                 (df['SIT_FIN_R'] == 'P'))
         )
     ]
 
     disengagement_condition = (
-        (df_no_promovidos['RBD_x'].notna() & df_no_promovidos['RBD_y'].isna()) |
-        (df_no_promovidos['COD_REG_RBD_x'].notna() & df_no_promovidos['COD_REG_RBD_y'].isna())
+            (df_no_promovidos['RBD_x'].notna() & df_no_promovidos['RBD_y'].isna()) |
+            (df_no_promovidos['COD_REG_RBD_x'].notna() & df_no_promovidos['COD_REG_RBD_y'].isna())
     )
-
-
 
     # Filtrar desvinculados
     df_disengaged = df_no_promovidos[disengagement_condition]
@@ -116,10 +119,14 @@ def get_tasa(df):
 def get_totales(df):
     df.fillna(0, inplace=True)
     totales = df[["count_matricula", "count_disengaged"]].sum()
-    return get_tasa(totales)
+    totales = get_tasa(totales)
+    totales = pd.DataFrame({"totales": totales})
+    return totales
 
 
 def read_data_statics():
+    pd.set_option('display.float_format', lambda x: '%.f' % x if x.is_integer() else '%.8f' % x)
+
     # Cargar datos
     data_performance = pd.read_csv("data/Rendimiento-2022/20230209_Rendimiento_2022_20230131_WEB_PS.csv", sep=";",
                                    low_memory=False)
@@ -127,8 +134,8 @@ def read_data_statics():
                                   sep=";", low_memory=False)
 
     # Limpiar datos
-    clean_data_enrollment = clean_dataframe(data_enrollment, [2023])
-    clean_data_performance = clean_dataframe(data_performance, [2022])
+    clean_data_enrollment = clean_dataframe(data_enrollment, [2023], True)
+    clean_data_performance = clean_dataframe(data_performance, [2022], True)
 
     # Fusionar y calcular estadísticas
     merged_data = pd.merge(clean_data_performance, clean_data_enrollment, on='MRUN', how='outer')
@@ -142,7 +149,6 @@ def read_data_statics():
 
     totales_rbd = get_totales(rbd_stats)
     totales_reg = get_totales(reg_stats)
-
 
     return {
         "RBD": {
